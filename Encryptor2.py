@@ -1,6 +1,8 @@
 import math
 
-def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'):
+PRINTABLE_ASCII = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+
+def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=PRINTABLE_ASCII):
     blocks = []
     valid_chars_length = len(valid_chars) + 1*bool(text_char_blank)
     valid_chars_dict = {char: idx+1*bool(text_char_blank) for idx, char in enumerate(valid_chars)}
@@ -21,7 +23,7 @@ def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=' !"#$
         blocks.append(block_bit)
     return blocks
 
-def block_to_text(blocks, block_size=256, text_char_blank=True, valid_chars=' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'):
+def block_to_text(blocks, block_size=256, text_char_blank=True, valid_chars=PRINTABLE_ASCII):
     valid_chars_length = len(valid_chars) + 1*bool(text_char_blank)
     log_factor = math.log(2, valid_chars_length)
     texts_per_block = math.floor(block_size * log_factor + 1e-15)
@@ -403,8 +405,8 @@ def decrypt_bitblock(cipher_bitblock_list, key_block_list, sub_block_size=8):
 
 
 def encrypt_text(text, key, block_size=256, sub_block_size=8, text_char_blank=True,
-        valid_text_chars = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~',
-        valid_key_chars=' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'):
+        valid_text_chars = PRINTABLE_ASCII,
+        valid_key_chars = PRINTABLE_ASCII):
     msg = text_to_block(text, block_size, text_char_blank, valid_text_chars)
     if key is None: cipher = [decimal_to_base(i, 2**sub_block_size) for i in msg]
     else:
@@ -414,8 +416,8 @@ def encrypt_text(text, key, block_size=256, sub_block_size=8, text_char_blank=Tr
     return ".".join(cipher_hex_list)
 
 def decrypt_text(cipher, key, block_size=256, sub_block_size=8, text_char_blank=True,
-        valid_text_chars = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~',
-        valid_key_chars=' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'):
+        valid_text_chars = PRINTABLE_ASCII,
+        valid_key_chars = PRINTABLE_ASCII):
     cipher_hex_list = cipher.split(".")
     cipher = [hex_string_to_int_list(i, "-") for i in cipher_hex_list]
     if key is None: msg = [base_to_decimal(i, 2**sub_block_size) for i in cipher]
