@@ -2,7 +2,33 @@ import math
 
 PRINTABLE_ASCII = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
-def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=PRINTABLE_ASCII):
+class UTF8():
+    pass
+
+def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=UTF8):
+    if valid_chars is UTF8:       # UTF-8 encoding mode
+        text_char_blank = False
+        texts_per_block = block_size // 8  # bytes for each block (8 bits/byte)
+
+        #if not text:
+        #    return [0]
+
+        # UTF-8 encoding + PKCS#7 padding
+        byte_data = text.encode('utf-8')
+        pad_len = texts_per_block - (len(byte_data) % texts_per_block)
+        if pad_len == 0:
+            pad_len = texts_per_block
+        padded_data = byte_data + bytes([pad_len] * pad_len)
+
+        # convert to large int blocks
+        blocks = []
+        for i in range(0, len(padded_data), texts_per_block):
+            chunk = padded_data[i:i + texts_per_block]
+            num = 0
+            for byte in chunk:
+                num = (num << 8) | byte
+            blocks.append(num)
+        return blocks
     blocks = []
     valid_chars_length = len(valid_chars) + 1*bool(text_char_blank)
     valid_chars_dict = {char: idx+1*bool(text_char_blank) for idx, char in enumerate(valid_chars)}
@@ -23,7 +49,34 @@ def text_to_block(text, block_size=256, text_char_blank=True, valid_chars=PRINTA
         blocks.append(block_bit)
     return blocks
 
-def block_to_text(blocks, block_size=256, text_char_blank=True, valid_chars=PRINTABLE_ASCII):
+def block_to_text(blocks, block_size=256, text_char_blank=True, valid_chars=UTF8):
+    if valid_chars is UTF8: # UTF-8 decoding mode
+        text_char_blank = False
+        texts_per_block = block_size // 8
+
+        # combine all bytes
+        byte_data = bytearray()
+        max_val = (1 << (texts_per_block * 8)) - 1
+        for block in blocks:
+            if block < 0 or block > max_val:
+                raise ValueError(f"Block value {block} out of range for block size {block_size}")
+            # Convert to fixed length bytes (big endian)
+            chunk = block.to_bytes(texts_per_block, 'big')
+            byte_data.extend(chunk)
+
+        # validate and remove PKCS#7 padding
+        if not byte_data:
+            return ""
+        pad_len = byte_data[-1]
+        if not (1 <= pad_len <= texts_per_block):
+            return False
+            raise ValueError("Invalid padding length")
+        if byte_data[-pad_len:] != bytes([pad_len]) * pad_len:
+            return False
+            raise ValueError("Invalid padding bytes")
+        unpadded_data = byte_data[:-pad_len]
+
+        return unpadded_data.decode('utf-8', errors='replace')
     valid_chars_length = len(valid_chars) + 1*bool(text_char_blank)
     log_factor = math.log(2, valid_chars_length)
     texts_per_block = math.floor(block_size * log_factor + 1e-15)
@@ -405,8 +458,7 @@ def decrypt_bitblock(cipher_bitblock_list, key_block_list, sub_block_size=8):
 
 
 def encrypt_text(text, key, block_size=256, sub_block_size=8, text_char_blank=True,
-        valid_text_chars = PRINTABLE_ASCII,
-        valid_key_chars = PRINTABLE_ASCII):
+        valid_text_chars = UTF8, valid_key_chars = UTF8):
     msg = text_to_block(text, block_size, text_char_blank, valid_text_chars)
     if key is None: cipher = [decimal_to_base(i, 2**sub_block_size) for i in msg]
     else:
@@ -416,8 +468,7 @@ def encrypt_text(text, key, block_size=256, sub_block_size=8, text_char_blank=Tr
     return ".".join(cipher_hex_list)
 
 def decrypt_text(cipher, key, block_size=256, sub_block_size=8, text_char_blank=True,
-        valid_text_chars = PRINTABLE_ASCII,
-        valid_key_chars = PRINTABLE_ASCII):
+        valid_text_chars = UTF8, valid_key_chars = UTF8):
     cipher_hex_list = cipher.split(".")
     cipher = [hex_string_to_int_list(i, "-") for i in cipher_hex_list]
     if key is None: msg = [base_to_decimal(i, 2**sub_block_size) for i in cipher]
@@ -425,6 +476,8 @@ def decrypt_text(cipher, key, block_size=256, sub_block_size=8, text_char_blank=
         k = text_to_block(key, min(block_size, 16), True, valid_key_chars)
         msg = [base_to_decimal(i, 2**sub_block_size) for i in decrypt_bitblock(cipher, k, sub_block_size)]
     return block_to_text(msg, block_size, text_char_blank, valid_text_chars)
+
+
 
 
 
