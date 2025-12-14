@@ -15,8 +15,10 @@ if ! [ -z "$FRP_PORT" ]; then
     if ! [ ${#FRP_TOKEN} -gt 20 ]; then 
         FRP_TOKEN=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
         echo "Token too weak. Token generated = $FRP_TOKEN"
+        sleep 1
     fi
     cd frp
+    read -p "Now going to cert.conf to configure openssl cert generation. Press Enter to continue" FRP_TOKEN
     cat > cert.conf << EOF
 [req]
 default_bits = 2048
@@ -71,7 +73,7 @@ EOF
     sudo mv frps.service /etc/systemd/system/frps.service
     sudo systemctl daemon-reload && sudo systemctl enable --now frps 
     cat cert.crt
-    FRP_TOKEN = ""
+    FRP_TOKEN=""
     echo "FRP installed. Displaying systemctl service status. Hit q to exit"
     sleep 2
     sudo systemctl status frps 
