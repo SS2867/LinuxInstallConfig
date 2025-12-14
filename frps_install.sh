@@ -5,7 +5,7 @@ FRP_LATEST_VERSION=$(curl -s https://api.github.com/repos/fatedier/frp/releases/
 FRP_ARCHIVE_FILE_NAME="frp_$(python3 -c "print(\"$FRP_LATEST_VERSION\".lower().replace('v',''))")_linux_amd64.tar.gz"
 wget https://github.com/fatedier/frp/releases/download/$FRP_LATEST_VERSION/$FRP_ARCHIVE_FILE_NAME
 tar -zxvf $FRP_ARCHIVE_FILE_NAME
-mv $(python3 -c "print(\"$FRP_ARCHIVE_FILE_NAME\".replace('', '.tar.gz'))") frp
+mv $(python3 -c "print(\"$FRP_ARCHIVE_FILE_NAME\".replace('.tar.gz', ''))") frp
 rm $FRP_ARCHIVE_FILE_NAME
 FRP_PORT=""
 read -p "Choose a port for FRP(server). If you don't want to install frp, just hit ENTER: "  FRP_PORT
