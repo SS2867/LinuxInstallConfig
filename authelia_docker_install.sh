@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ~
 mkdir -p ~/authelia/config
-sudo apt install nginx -y
+sudo apt install certbot nginx python3-certbot-nginx -y
 read -p "Create your username: " AUTHELIA_USERNAME
 echo "Create your user password"
 sudo docker run --rm -it authelia/authelia:latest authelia crypto hash generate argon2
@@ -26,6 +26,7 @@ if [ -z "$AUTHELIA_PORT" ]; then
     sleep .3
 fi
 read -p "What is the domain of authelia auth portal (such as authelia.example.top): "  AUTHELIA_DOMAIN
+sudo certbot certonly -d $AUTHELIA_DOMAIN
 cat > ~/authelia/config/configuration.yml << EOF
 # authelia/config/configuration.yml
 
@@ -413,21 +414,21 @@ fi
 cat > authelia.conf << EOF
 # /etc/nginx/snippets/authelia.conf
 ## 发送给 Authelia 的请求
-set $upstream_authelia http://127.0.0.1:$AUTHELIA_PORT;
+set \$upstream_authelia http://127.0.0.1:$AUTHELIA_PORT;
 
 ## 位置块，用于将未认证的请求转发至 Authelia
 location /authelia-verify {
     internal; # 这是一个内部位置，外部无法直接访问
-    proxy_pass $upstream_authelia/api/verify;
+    proxy_pass \$upstream_authelia/api/verify;
 
     # 传递必要的原始请求信息给 Authelia
     proxy_set_header Content-Length "";
-    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
-    proxy_set_header X-Forwarded-Method $request_method;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $http_host;
-    proxy_set_header X-Forwarded-Uri $request_uri;
-    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Original-URL \$scheme://\$http_host\$request_uri;
+    proxy_set_header X-Forwarded-Method \$request_method;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host \$http_host;
+    proxy_set_header X-Forwarded-Uri \$request_uri;
+    proxy_set_header X-Forwarded-For \$remote_addr;
     # 确保不将请求体传递给验证端点
     proxy_pass_request_body off;
 }
@@ -438,7 +439,7 @@ cat > $AUTHELIA_DOMAIN << EOF
 server {
     listen 80;
     server_name $AUTHELIA_DOMAIN;
-    return 301 https://$server_name$request_uri;
+    return 301 https://\$server_name\$request_uri;
 }
 
 server {
@@ -452,9 +453,9 @@ server {
     location / {
         # 直接代理到 Authelia 容器
         proxy_pass http://127.0.0.1:9091;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
