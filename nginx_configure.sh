@@ -54,7 +54,7 @@ server {
         $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-User \$user;
         $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-Groups \$groups;
 
-        proxy_pass http://localhost:$AUTHELIA_PORT; 
+        proxy_pass http://localhost:$NGINX_SERVICE_PORT; 
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr; #localhost ;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
