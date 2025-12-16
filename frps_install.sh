@@ -21,7 +21,7 @@ if ! [ ${#FRP_TOKEN} -gt 20 ]; then
     sleep 1
 fi
 cd frp
-read -p "Now going to cert.conf to configure openssl cert generation. Press Enter to continue" FRP_TOKEN
+read -p "Now going to cert.conf to configure openssl cert generation. Press Enter to continue" OPTION
 cat > cert.conf << EOF
 [req]
 default_bits = 2048
