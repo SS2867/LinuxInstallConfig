@@ -29,7 +29,7 @@ server {
     listen 80;
     server_name $NGINX_SERVICE_DOMAIN;
 
-    return 301 https://\$host:8443\$request_uri;
+    return 301 https://\$host\$request_uri;
 }
 
 server {
@@ -83,6 +83,14 @@ EOF
     if [ "$OPTION" = "Y" ]; then
         sudo ln -s /etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN /etc/nginx/sites-enabled
     fi
+    read -p "Do you want to block direct port access (that bypasses nginx) via iptables in /etc/rc.local? (Enter Y) " OPTION
+    if [ "$OPTION" = "Y" ]; then
+        sudo sed -i "/^exit 0$/i \\
+iptables -A INPUT -i lo -p tcp --dport $NGINX_SERVICE_PORT -j ACCEPT\\
+iptables -A INPUT -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.local
+    fi
+    
+
     sudo nginx -t
     read -p "Do you want to configure another site? (Enter Y) " OPTION
 done

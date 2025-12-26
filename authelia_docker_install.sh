@@ -396,7 +396,7 @@ read -p "Is everything ok to install and launch authelia docker now? (Enter Y)" 
 if [ "$OPTION" = "Y" ]; then
     sudo docker run -d \
         --name authelia \
-        -p $AUTHELIA_PORT:$AUTHELIA_PORT \
+        -p 127.0.0.1:$AUTHELIA_PORT:$AUTHELIA_PORT \
         -v ~/authelia/config:/config \
         --restart unless-stopped \
         authelia/authelia:latest
