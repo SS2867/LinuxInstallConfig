@@ -421,6 +421,8 @@ location /authelia-verify {
     internal; # 这是一个内部位置，外部无法直接访问
     proxy_pass \$upstream_authelia/api/verify;
 
+    client_max_body_size 2G;
+
     # 传递必要的原始请求信息给 Authelia
     proxy_set_header Content-Length "";
     proxy_set_header X-Original-URL \$scheme://\$http_host\$request_uri;
@@ -431,6 +433,21 @@ location /authelia-verify {
     proxy_set_header X-Forwarded-For \$remote_addr;
     # 确保不将请求体传递给验证端点
     proxy_pass_request_body off;
+
+    proxy_intercept_errors on;
+    error_page 401 = @authelia-401;
+    error_page 403 = @authelia-403;
+}
+
+location @authelia-401 {
+    internal;
+    set \$authelia-failed "401";
+    return 401;
+}
+location @authelia-403 {
+    internal;
+    set \$authelia-failed "403";
+    return 403;
 }
 EOF
 sudo mv authelia.conf /etc/nginx/snippets/authelia.conf
@@ -445,6 +462,8 @@ server {
 server {
     listen 443 ssl;
     server_name $AUTHELIA_DOMAIN;
+    
+    client_max_body_size 2G;
 
     ssl_certificate /etc/letsencrypt/live/$AUTHELIA_DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$AUTHELIA_DOMAIN/privkey.pem;

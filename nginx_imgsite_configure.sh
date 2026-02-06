@@ -1,16 +1,17 @@
 #!/bin/bash
 
-read -p "Do you want to configure nginx sites? (Enter Y)" OPTION
+read -p "Do you want to configure nginx imaging sites? (Enter Y)" OPTION
 if [ "$OPTION" = "Y" ]; then
     sudo apt install certbot nginx python3-certbot-nginx -y
+    sudo mkdir -p /etc/nginx/sites-available/imgsites/
     read -p "Which port does authelia listen to (if authelia is not installed, just hit ENTER): " AUTHELIA_PORT
     if ! [ -z "$AUTHELIA_PORT" ]; then
         read -p "What is the authelia auth domain (such as authelia.example.top): " AUTHELIA_DOMAIN
     fi
 fi
 while [ "$OPTION" = "Y" ]; do
-    read -p "What is the target server service domain: " NGINX_SERVICE_DOMAIN
-    read -p "What is the port the target service listen to: " NGINX_SERVICE_PORT
+    read -p "What is the domain client will be visiting: " NGINX_SERVICE_DOMAIN
+    read -p "What is the target website's hostname to be mirrored: " NGINX_SERVICE_SITE_HOSTNAME
     NGINX_SERVICE_AUTHELIA_FLAG="#"
     if ! [ -z "$AUTHELIA_PORT" ]; then
         read -p "Is authelia auth required for this service? (Enter Y) " OPTION
@@ -20,8 +21,9 @@ while [ "$OPTION" = "Y" ]; do
         fi
     fi
     NGINX_SERVICE_REMOVE_CORS_CSP_FLAG="#"
-    echo "Do you want to forcely remove CORS (Cross-Origin Resource Sharing) constraint and "
-    read -p "CSP (Content Security Policy) for this service? (Enter Y) " OPTION
+    #echo "Do you want to forcely remove CORS (Cross-Origin Resource Sharing) constraint and "
+    #read -p "CSP (Content Security Policy) for this service? (Enter Y) " OPTION
+    OPTION="Y"
     if [ "$OPTION" = "Y" ]; then
         NGINX_SERVICE_REMOVE_CORS_CSP_FLAG=""
     fi
@@ -47,12 +49,24 @@ server {
 
     $NGINX_SERVICE_AUTHELIA_FLAG include /etc/nginx/snippets/authelia.conf;
 
+    location @error {
+        internal;  
+        if (\$authelia-failed = "403") {
+            return 302 https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
+        }
+        if (\$authelia-failed = "401") {
+            return 302 https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
+        }
+        if (\$status = 401) {return 401; }
+        if (\$status = 403) {return 403; }
+    }
+
     location / {
         
         
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
         ## If the verification returns a 401/403 error, redirect to the Authelia login page.
-        $NGINX_SERVICE_AUTHELIA_FLAG error_page 401 403 =302 https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
+        $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 =@error;
 
         ## After successful auth, set the user header info and proxy to the actual backend app
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request_set \$user \$upstream_http_remote_user;
@@ -60,9 +74,10 @@ server {
         $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-User \$user;
         $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-Groups \$groups;
 
-        proxy_pass http://localhost:$NGINX_SERVICE_PORT; 
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr; #localhost ;
+        proxy_pass https://$NGINX_SERVICE_SITE_HOSTNAME; 
+    	proxy_set_header Host $NGINX_SERVICE_SITE_HOSTNAME;
+        proxy_set_header Referer "";
+    	proxy_set_header X-Real-IP localhost;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme; #https;  # 告知后端使用了 HTTPS
         client_max_body_size 20G;
@@ -103,24 +118,17 @@ server {
     #}
 }
 EOF
-    sudo mv $NGINX_SERVICE_DOMAIN /etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN
+    sudo mv $NGINX_SERVICE_DOMAIN /etc/nginx/sites-available/imgsites/$NGINX_SERVICE_DOMAIN
     read -p "Is this site ok for enable now? (Enter Y) " OPTION
     if [ "$OPTION" = "Y" ]; then
-        sudo ln -s /etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN /etc/nginx/sites-enabled
-    fi
-    read -p "Do you want to block direct port access (that bypasses nginx) via iptables in /etc/rc.local? (Enter Y) " OPTION
-    if [ "$OPTION" = "Y" ]; then
-        sudo sed -i "/^exit 0$/i \\
-iptables -A INPUT -i lo -p tcp --dport $NGINX_SERVICE_PORT -j ACCEPT\\
-iptables -A INPUT -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.local
+        sudo ln -s /etc/nginx/sites-available/imgsites/$NGINX_SERVICE_DOMAIN /etc/nginx/sites-enabled
     fi
     
-
     sudo nginx -t
     read -p "Do you want to configure another site? (Enter Y) " OPTION
 done
-echo "The following sites are configured at /etc/nginx/sites-available: "
-ls /etc/nginx/sites-available
+echo "The following sites images are configured at /etc/nginx/sites-available/imgsites: "
+ls /etc/nginx/sites-available/imgsites
 echo "Among them, below are enabled at /etc/nginx/sites-enabled: "
 ls /etc/nginx/sites-enabled
 read -p "Press ENTER to continue..." OPTION
