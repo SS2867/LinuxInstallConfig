@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied</title>
+    <style>
+        :root {
+            --primary-color: #d32f2f; /* Red for denied */
+            --bg-color: #f4f6f8;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --sub-text-color: #666666;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            overflow: hidden;
+            min-height: 400px;
+        }
+
+        .left-panel {
+            flex: 1;
+            background-color: #ffebee; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            min-height: 200px; 
+        }
+
+        
+        .reject-icon {
+            font-size: 150px;
+            color: var(--primary-color);
+            font-weight: bold;
+            line-height: 1;
+            user-select: none;
+        }
+
+        
+        .right-panel {
+            flex: 1.5;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        
+        .lang-select-container {
+            width: 100%;
+            margin-bottom: 20px;
+            text-align: right;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+            background-color: #fff;
+            cursor: pointer;
+            max-width: 200px;
+        }
+
+        
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        
+        #msg-content {
+            font-size: 1.1rem;
+            color: var(--sub-text-color);
+            margin-bottom: 30px;
+            line-height: 1.6;
+            white-space: pre-wrap; /* 保留换行 */
+        }
+
+        
+        #action-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        #action-btn:hover {
+            background-color: #b71c1c;
+        }
+
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                max-width: 100%;
+                min-height: auto;
+            }
+
+            .left-panel {
+                padding: 40px 0;
+                min-height: 150px;
+            }
+
+            .reject-icon {
+                font-size: 100px;
+            }
+
+            .right-panel {
+                padding: 30px 20px;
+                align-items: center; /* 手机端居中 */
+                text-align: center;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .lang-select-container {
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="left-panel">
+            <div class="reject-icon">✖</div>
+        </div>
+
+        <div class="right-panel">
+            <div class="lang-select-container">
+                <select id="language-selector" onchange="changeLanguage(this.value)"></select>
+            </div>
+            <h1 id="title-text">Access Denied</h1>
+            <div id="msg-content"></div>
+            <button id="action-btn" onclick="handleRedirect()"></button>
+        </div>
+    </div>
+
+    <script>
+        const translations = {
+            'en': 'Access Denied',
+            'zh': '拒绝访问', // chinese
+            'hi': 'पहुँच अस्वीकार कर दी गई', // Hindi
+            'ur': 'رسائی مسترد', // Urdu
+            'es': 'Acceso Denegado', // Spanish
+            'ar': 'تم رفض الوصول', // Arabic
+            'fr': 'Accès Refusé', // French
+            'bn': 'অ্যাক্সেস অস্বীকার করা হয়েছে', // Bengali
+            'pt': 'Acesso Negado', // Portuguese
+            'ru': 'Доступ запрещён', // Russian
+            'id': 'Akses Ditolak', // Indonesian
+            'de': 'Zugriff verweigert', // German
+            'ja': 'アクセスが拒否されました', // Japanese
+            'ha': 'An hana shiga', // Nigerian Hausa
+            'vi': 'Truy cập bị từ chối', // Vietnamese
+            'tr': 'Erişim Reddedildi', // Turkish
+            'ko': '접근 거부됨', // Korean
+            'it': 'Accesso Negato' // Italian
+        };
+
+        const languageMap = {
+            'en': 'en', 'en-us': 'en', 'en-gb': 'en',
+            'zh': 'zh', 'zh-cn': 'zh', 'zh-hans': 'zh', 
+            'zh-tw': 'zh', 'zh-hk': 'zh', 'zh-hant': 'zh', 
+            'hi': 'hi', 'hi-in': 'hi',
+            'ur': 'ur', 'ur-pk': 'ur',
+            'es': 'es', 'es-es': 'es', 'es-mx': 'es',
+            'ar': 'ar', 'ar-sa': 'ar', 'ar-ae': 'ar',
+            'fr': 'fr', 'fr-fr': 'fr', 'fr-ca': 'fr',
+            'bn': 'bn', 'bn-bd': 'bn', 'bn-in': 'bn',
+            'pt': 'pt', 'pt-br': 'pt', 'pt-pt': 'pt',
+            'ru': 'ru', 'ru-ru': 'ru',
+            'id': 'id', 'id-id': 'id',
+            'de': 'de', 'de-de': 'de', 'de-at': 'de',
+            'ja': 'ja', 'ja-jp': 'ja',
+            'ha': 'ha', 'ha-ng': 'ha', 
+            'vi': 'vi', 'vi-vn': 'vi',
+            'tr': 'tr', 'tr-tr': 'tr',
+            'ko': 'ko', 'ko-kr': 'ko',
+            'it': 'it', 'it-it': 'it'
+        };
+
+        const allowedDomainList = "example.com google.com".split();
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initLanguageSelector();
+            parseAndRender();
+        });
+
+        function initLanguageSelector() {
+            const selector = document.getElementById('language-selector');
+            const displayNames = {
+                'en': 'English', 'zh': '中文', 'hi': 'हिन्दी', 'ur': 'اردو',
+                'es': 'Español', 'ar': 'العربية', 'fr': 'Français', 'bn': 'বাংলা',
+                'pt': 'Português', 'ru': 'Русский', 'id': 'Bahasa Indonesia',
+                'de': 'Deutsch', 'ja': '日本語', 'ha': 'Hausa (Nigeria)',
+                'vi': 'Tiếng Việt', 'tr': 'Türkçe', 'ko': '한국어', 'it': 'Italiano'
+            };
+
+            for (const [code, name] of Object.entries(displayNames)) {
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = name;
+                selector.appendChild(option);
+            }
+
+            const userLang = navigator.language || navigator.userLanguage; 
+            const normalizedLang = userLang.toLowerCase();
+            
+            let detectedCode = languageMap[normalizedLang] || 'en';
+            
+            if (!languageMap[normalizedLang]) {
+                const prefix = normalizedLang.split('-')[0];
+                if (languageMap[prefix]) {
+                    detectedCode = languageMap[prefix];
+                } else {
+                    detectedCode = 'en';
+                }
+            }
+
+            selector.value = detectedCode;
+            updateTextContent(detectedCode);
+        }
+
+        function isValidRedirectUrl(urlString) {
+            if (!urlString) return false;
+            try {
+                const url = new URL(urlString, window.location.origin);
+                if (url.protocol !== 'https:') {
+                    console.warn('Disallowed Protocol:', url.protocol); return false;}
+                if (!(allowedDomainList.some(i=>url.hostname.endsWith(i)))) {
+                    console.warn('Untrusted hostname:', url.hostname); return false;}
+                return true;
+            } catch (e) {console.warn('Invalid URL:', urlString, e); return false;}
+        }
+
+        function parseAndRender() {
+            let hash = window.location.hash.substring(1);
+            if (!hash && window.location.search) {
+                hash = window.location.search.substring(1);
+            }
+            const params = new URLSearchParams(hash);
+            const msg = params.get('msg') || '';
+            const buttonLabel = params.get('button') || '';
+            let redirectUrl = params.get('rd') || '';
+            redirectUrl = isValidRedirectUrl(redirectUrl) ? redirectUrl : "";
+            document.getElementById('msg-content').textContent = decodeURIComponent(msg);
+            const btn = document.getElementById('action-btn');
+            btn.textContent = decodeURIComponent(buttonLabel);
+            if (!buttonLabel) {
+                btn.style.display = 'none';
+            } else {
+                btn.style.display = 'inline-block';
+                btn.dataset.redirect = decodeURIComponent(redirectUrl);
+            }
+        }
+
+        function changeLanguage(langCode) {
+            updateTextContent(langCode);
+        }
+
+        function updateTextContent(langCode) {
+            const titleElement = document.getElementById('title-text');
+            const text = translations[langCode] || translations['en'];
+            titleElement.textContent = text;
+
+            if (langCode === 'ar' || langCode === 'ur') {
+                document.body.dir = 'rtl';
+                document.querySelector('.right-panel').style.alignItems = 'flex-end';
+            } else {
+                document.body.dir = 'ltr';
+                document.querySelector('.right-panel').style.alignItems = ''; 
+                if(window.innerWidth <= 768) {
+                     document.querySelector('.right-panel').style.alignItems = 'center';
+                }
+            }
+        }
+
+        function handleRedirect() {
+            const btn = document.getElementById('action-btn');
+            const url = btn.dataset.redirect;
+            if (url) {
+                window.location.href = url;
+            }
+        }
+    </script>
+</body>
+</html>
