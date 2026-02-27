@@ -47,12 +47,20 @@ server {
 
     $NGINX_SERVICE_AUTHELIA_FLAG include /etc/nginx/snippets/authelia.conf;
 
+    $NGINX_SERVICE_AUTHELIA_FLAG location @error {
+    $NGINX_SERVICE_AUTHELIA_FLAG    internal;  
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "403") {return 302 https://$AUTHELIA_DOMAIN/403?button=Logout&rd=https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=$scheme://$http_host$request_uri; }
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "401") {return 302 https://$AUTHELIA_DOMAIN/?rd=$scheme://$http_host$request_uri; }
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$status = 401) {return 401;}
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$status = 403) {return 403;}
+    $NGINX_SERVICE_AUTHELIA_FLAG }
+
     location / {
         
         
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
         ## If the verification returns a 401/403 error, redirect to the Authelia login page.
-        $NGINX_SERVICE_AUTHELIA_FLAG error_page 401 403 =302 https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
+        $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;
 
         ## After successful auth, set the user header info and proxy to the actual backend app
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request_set \$user \$upstream_http_remote_user;

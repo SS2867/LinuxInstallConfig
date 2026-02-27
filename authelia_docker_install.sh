@@ -27,6 +27,7 @@ if [ -z "$AUTHELIA_PORT" ]; then
 fi
 read -p "What is the domain of authelia auth portal (such as authelia.example.top): "  AUTHELIA_DOMAIN
 sudo certbot certonly -d $AUTHELIA_DOMAIN
+read -p "What's the base domain to protect" $BASE_DOMAIN
 cat > ~/authelia/config/configuration.yml << EOF
 # authelia/config/configuration.yml
 
@@ -38,7 +39,7 @@ cat > ~/authelia/config/configuration.yml << EOF
 ## They should be in base64 format, and have one of the following extensions: *.cer, *.crt, *.pem.
 # certificates_directory: '/config/certificates/'
 
-theme: 'light'  ## The theme to display: light, dark, grey, auto.
+theme: 'auto'  ## The theme to display: light, dark, grey, auto.
 
 ## default 2FA method for new users and for when a user with preferred method configured disabled. 
 default_2fa_method: 'totp'    ## Options are totp, webauthn, mobile_push. Must be a method that is enabled.
@@ -313,7 +314,7 @@ session:
   cookies:  ## Cookies configure the list of allowed cookie domains for sessions to be created on.
     -
       name: 'authelia_session' ## The name of the session cookie. 
-      domain: 'example.top'  ## The domain to protect. the Authelia portal must also be in that domain.
+      domain: '$BASE_DOMAIN'  ## The domain to protect. the Authelia portal must also be in that domain.
       authelia_url: 'https://$AUTHELIA_DOMAIN/authelia'  ## Required. portal URI to redirect users to 
       default_redirection_url: 'https://$AUTHELIA_DOMAIN'
       # same_site: 'lax'    ## none, lax, or strict.  https://www.authelia.com/c/session#same_site
@@ -451,6 +452,7 @@ location @authelia-403 {
 }
 EOF
 sudo mv authelia.conf /etc/nginx/snippets/authelia.conf
+wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/AccessDenied.html
 cat > $AUTHELIA_DOMAIN << EOF
 # /etc/nginx/sites-available/$AUTHELIA_DOMAIN
 server {
@@ -471,14 +473,24 @@ server {
 
     location / {
         # 直接代理到 Authelia 容器
-        proxy_pass http://127.0.0.1:9091;
+        proxy_pass http://127.0.0.1:$AUTHELIA_PORT;
         proxy_set_header Host \$http_host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
+    location /403 {
+        root /etc/nginx/sites-available/AccessDenied;
+        try_files /AccessDenied.html /AccessDenied.html;
+        sub_filter 'example.com google.com' '$BASE_DOMAIN';
+        sub_filter_once off; 
+        sub_filter_types text/html;
+	      autoindex off;
+    }
 }
 EOF
 sudo mv $AUTHELIA_DOMAIN /etc/nginx/sites-available/$AUTHELIA_DOMAIN
+sudo mkdir -p /etc/nginx/sites-available/AccessDenied
+sudo mv AccessDenied.html /etc/nginx/sites-available/AccessDenied/AccessDenied.html
 sudo ln -s /etc/nginx/sites-available/$AUTHELIA_DOMAIN /etc/nginx/sites-enabled
 sudo nginx -t
 read -p "Is nginx configuration ok? (Enter Y)" OPTION

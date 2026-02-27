@@ -52,7 +52,7 @@ server {
     location @error {
         internal;  
         if (\$authelia-failed = "403") {
-            return 302 https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
+            return 302 https://authelia.148.ss2867.top/403?button=Logout&rd=https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;
         }
         if (\$authelia-failed = "401") {
             return 302 https://$AUTHELIA_DOMAIN/?rd=\$scheme://\$http_host\$request_uri;

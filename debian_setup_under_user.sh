@@ -136,9 +136,9 @@ sudo ufw disable
 # jupyterlab 
 read -p "Do you want to install a persistent open jupyterlab service? (Enter Y)"  OPTION
 if [ "$OPTION" = "Y" ]; then
-    sudo apt install python3-pip -y
-    python3 -m pip -q install jupyterlab notebook jupyterlab-lsp python-lsp-server[all] ipykernel
-    python3 -m pip -q install jupyterlab notebook jupyterlab-lsp python-lsp-server[all] ipykernel --break-system-packages
+    sudo apt install python3-pip texlive-latex-base texlive-xetex -y
+    python3 -m pip -q install jupyterlab notebook jupyter-ai jupyterlab-lsp python-lsp-server[all] jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab_favorites clangd nodejs ipykernel ipython
+    python3 -m pip -q install jupyterlab notebook jupyter-ai jupyterlab-lsp python-lsp-server[all] jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab_favorites clangd nodejs ipykernel ipython --break-system-packages
     echo "Set a password for jupyterlab login. Must be at least 12 characters."
     while ! [ ${#JUPYTERLAB_PASSWORD} -gt 12 ]; do
         JUPYTERLAB_PASSWORD=$(python3 -c "from getpass import getpass as g; a,b=g(),g(\"Repeat: \"); print(a if a==b else \"\")")
@@ -256,8 +256,13 @@ wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/m
 chmod +x nginx_configure.sh
 ./nginx_configure.sh
 
-
-
+# vaultwarden
+wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/vaultwarden_docker_install.sh
+chmod +x vaultwarden_docker_install.sh
+read -p "Do you want to install vaultwarden (in docker)? (Enter Y)" OPTION
+if [ "$OPTION" = "Y" ]; then
+    ./vaultwarden_docker_install.sh
+fi
 
 
 wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/x-ui-install.sh
@@ -270,7 +275,7 @@ chmod +x zoom-install.sh
 
 #wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/jupyter_sh_encrypted
 wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/Encryptor2.py
-#python3 -c 'import Encryptor2; a="".join(open("jupyter_sh_encrypted").readlines()); open("jupyter.sh", "w").write(Encryptor2.decrypt_text(a, "nicai", valid_text_chars=Encryptor2.PRINTABLE_ASCII + "\n"))'
+python3 -c 'import Encryptor2; a="".join(open("jupyter_sh_encrypted").readlines()); open("jupyter.sh", "w").write(Encryptor2.decrypt_text(a, "nicai", valid_text_chars=Encryptor2.PRINTABLE_ASCII + "\n"))'
 #rm jupyter_sh_encrypted
 #chmod +x jupyter.sh
 
