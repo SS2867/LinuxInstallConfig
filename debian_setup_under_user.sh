@@ -6,11 +6,14 @@ echo "in user $USER"
 cd $HOME
 
 NOPASSWD=""
+OPTION=""
 read -p "Disable sudo password auth requirement for user $USER? (Enter anything to disable, otherwise leave blank and hit enter) " NOPASSWD
 if ! [ -z "$NOPASSWD" ]; then
     echo "$USER ALL=(ALL) NOPASSWD:ALL" | sudo tee -a /etc/sudoers.d/nopasswd
 fi
 echo "%sudo ALL=(ALL) NOPASSWD: /sbin/shutdown" | sudo tee -a /etc/sudoers.d/nopasswd  && sudo chmod 0440 /etc/sudoers.d/nopasswd
+read -p "Enable user systemd service linger? (ENTER Y)" OPTION
+if [ "$OPTION" = "Y" ]; then sudo loginctl enable-linger $USER; fi
 
 sudo iptables -P INPUT ACCEPT
 
@@ -67,7 +70,7 @@ install_chrome_extension () {
 
 sudo apt update -y
 sudo apt full-upgrade -y
-sudo apt install tmux certbot nginx python3-certbot-nginx vim htop nethogs xfce4 xfce4-goodies fonts-wqy-zenhei konsole xserver-xephyr fail2ban tightvncserver simplescreenrecorder vlc ffmpeg winff rsyslog iptables -y
+sudo apt install tmux certbot nginx python3-certbot-nginx vim colordiff htop nethogs fail2ban   xfce4 xfce4-goodies fonts-wqy-zenhei konsole xserver-xephyr tightvncserver simplescreenrecorder vlc ffmpeg winff rsyslog iptables -y
 #sudo apt install   sddm-theme-debian-breeze kde-config-sddm kde-plasma-desktop 
 
 sudo update-alternatives --set x-terminal-emulator /usr/bin/konsole
@@ -134,13 +137,30 @@ sudo ufw disable
 
 
 # jupyterlab 
-read -p "Do you want to install a persistent open jupyterlab service? (Enter Y)"  OPTION
+read -p "Do you want to configure an open jupyterlab service? (Enter Y)"  OPTION
 if [ "$OPTION" = "Y" ]; then
-    sudo apt install python3-pip texlive-latex-base texlive-xetex -y
-    python3 -m pip -q install jupyterlab notebook jupyter-ai jupyterlab-lsp python-lsp-server[all] jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab_favorites clangd nodejs ipykernel ipython
-    python3 -m pip -q install jupyterlab notebook jupyter-ai jupyterlab-lsp python-lsp-server[all] jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab_favorites clangd nodejs ipykernel ipython --break-system-packages
+    mkdir -p $HOME/jupyterlab && cd $HOME/jupyterlab
+    sudo apt update && sudo apt install python3 python3-pip git -y
+    python3 -m pip install pyzmq --prefer-binary --break-system-packages
+    python3 -m pip install pyzmq --prefer-binary 
+    python3 -m pip -q install jupyterlab notebook ipykernel ipython jupyter-resource-usage jupyter-server-proxy jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab-favorites
+    python3 -m pip -q install jupyterlab notebook ipykernel ipython jupyter-resource-usage jupyter-server-proxy jupyterlab-latex jupyterlab-git jupyter-archive jupyterlab-spreadsheet-editor jupyterlab-favorites --break-system-packages
+    read -p "Do you want to install a jupyternaut jupyter-ai[all] extension? (Enter Y)"  OPTION
+    if [ "$OPTION" = "Y" ]; then
+        python3 -m pip -q install jupyter-ai[all] 
+        python3 -m pip -q install jupyter-ai[all]  --break-system-packages
+    fi
+    read -p "Do you want to install jupyter language server protocol LSP? (Enter Y)"  OPTION
+    if [ "$OPTION" = "Y" ]; then
+        python3 -m pip -q install jupyterlab-lsp python-lsp-server[all] clangd nodejs 
+        python3 -m pip -q install jupyterlab-lsp python-lsp-server[all] clangd nodejs  --break-system-packages
+    fi
+    read -p "Do you want to install LaTeX compiler texlive-latex-base texlive-xetex on server? (Enter Y)"  OPTION
+    if [ "$OPTION" = "Y" ]; then
+        sudo apt install texlive-latex-base texlive-xetex -y
+    fi
     echo "Set a password for jupyterlab login. Must be at least 12 characters."
-    while ! [ ${#JUPYTERLAB_PASSWORD} -gt 12 ]; do
+    while ! [ ${#JUPYTERLAB_PASSWORD} -gt 11 ]; do
         JUPYTERLAB_PASSWORD=$(python3 -c "from getpass import getpass as g; a,b=g(),g(\"Repeat: \"); print(a if a==b else \"\")")
     done
     echo "Password length: ${#JUPYTERLAB_PASSWORD}"
@@ -150,25 +170,57 @@ if [ "$OPTION" = "Y" ]; then
         JUPYTERLAB_PORT=$(shuf -i 10240-65535 -n 1)
         echo "Empty port entered. Chosen $JUPYTERLAB_PORT as jupyterlab server port" && sleep 2
     fi
-    cat > jupyterlab.service << EOF
+    echo "If you need to specify a base URL --NotebookApp.base_url=xxx (like \"/\", \"/ABC\"), enter here"
+    read -p "Otherwise, hit ENTER: " JUPYTERLAB_BASEURL
+    if [ -n "$JUPYTERLAB_BASEURL" ]; then JUPYTERLAB_BASEURL_PARAM="--NotebookApp.base_url=$JUPYTERLAB_BASEURL"; fi
+    openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365000 -nodes -subj "/CN=localhost"
+
+    JUPYTERLAB_LAUNCH_COMMAND="python3 -m jupyterlab --port $JUPYTERLAB_PORT $JUPYTERLAB_BASEURL_PARAM --certfile=$HOME/jupyterlab/cert.pem --keyfile=$HOME/jupyterlab/key.pem --PasswordIdentityProvider.hashed_password='$JUPYTERLAB_PASSWORD_HASH' --ContentsManager.allow_hidden=True --ServerApp.allow_remote_access=True --ip=\"0.0.0.0\" --no-browser  "
+    cat > jupyterlab.sh << EOF
+#!/bin/bash
+nohup  $JUPYTERLAB_LAUNCH_COMMAND >> $HOME/jupyterlab/jupyterlab.log 2>&1 &
+exit 0
+EOF
+    chmod +x jupyterlab.sh
+
+    #read -p "Do you want to install as a system service? (Enter Y)"  OPTION
+    read -p "Do you want to install as a user systemd service? (Enter Y)"  OPTION
+    if [ "$OPTION" = "Y" ]; then
+        read -p "Enable user systemd service linger? (ENTER Y)" OPTION
+        if [ "$OPTION" = "Y" ]; then sudo loginctl enable-linger $USER; fi
+        read -p "Enter service name (xxx.service, by default \`jupyterlab\`): "  JUPYTERLAB_SERVICE_NAME
+        if [ -z "$JUPYTERLAB_SERVICE_NAME" ]; then JUPYTERLAB_SERVICE_NAME="jupyterlab"; fi
+        cat > "${JUPYTERLAB_SERVICE_NAME}.service" << EOF
 [Unit]
-Description=JupyterLab Trigger Service
+Description=JupyterLab Service
 After=network.target
 
 [Service]
 Type=simple
-User=$USER
 WorkingDirectory=/
-ExecStart=nohup python3 -m jupyterlab --port $JUPYTERLAB_PORT  --PasswordIdentityProvider.hashed_password="$JUPYTERLAB_PASSWORD_HASH" --ContentsManager.allow_hidden=True --ServerApp.allow_remote_access=True --ip="0.0.0.0" --no-browser  
+ExecStart=$JUPYTERLAB_LAUNCH_COMMAND
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
-    echo "Jupyterlab systemctl service file (jupyterlab.service) created. Enabling"
-    cat jupyterlab.service
-    sudo mv jupyterlab.service /etc/systemd/system/jupyterlab.service
-    sudo systemctl daemon-reload && sudo systemctl enable --now jupyterlab.service
-    sleep 2 && sudo systemctl status jupyterlab.service
+#User=$USER
+#WantedBy=multi-user.target
+#EOF
+        echo "Jupyterlab systemctl service file (${JUPYTERLAB_SERVICE_NAME}.service) created. Enabling"
+        cat ${JUPYTERLAB_SERVICE_NAME}.service
+        mkdir -p ~/.config/systemd/user/
+        #sudo mv ${JUPYTERLAB_SERVICE_NAME}.service /etc/systemd/system/${JUPYTERLAB_SERVICE_NAME}.service
+        #sudo systemctl daemon-reload && sudo systemctl enable --now ${JUPYTERLAB_SERVICE_NAME}.service
+        #sleep 2 && sudo systemctl status ${JUPYTERLAB_SERVICE_NAME}.service
+        mv ${JUPYTERLAB_SERVICE_NAME}.service ~/.config/systemd/user/${JUPYTERLAB_SERVICE_NAME}.service
+        systemctl --user daemon-reload && systemctl  --user enable --now ${JUPYTERLAB_SERVICE_NAME}.service
+        sleep 2 && systemctl --user status ${JUPYTERLAB_SERVICE_NAME}.service
+        cd $HOME
+    else
+        ./jupyterlab.sh
+        sleep 2 && tail jupyterlab.log -n 20 && sleep 2 && read -p "Hit ENTER to continue" OPTION
+        cd $HOME
+    fi
 fi
 
 # =======download and install scripts==========
@@ -267,7 +319,11 @@ fi
 
 wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/x-ui-install.sh
 chmod +x x-ui-install.sh
+wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/x-ui-install.sh
+chmod +x x-ui-install.sh
 #sudo ./x-ui-install.sh
+wget -N https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh -O 3xui-install.sh
+chmod +x 3xui-install.sh
 
 bash -c 'echo -e "#! /bin/bash\nwget -N https://zoom.us/client/latest/zoom_amd64.deb\nsudo apt install -y ./zoom_amd64.deb\nrm ./zoom_amd64.deb\nexit 0\n" > ./zoom-install.sh'
 chmod +x zoom-install.sh
@@ -275,7 +331,7 @@ chmod +x zoom-install.sh
 
 #wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/jupyter_sh_encrypted
 wget -N https://raw.githubusercontent.com/SS2867/LinuxInstallConfig/refs/heads/main/Encryptor2.py
-python3 -c 'import Encryptor2; a="".join(open("jupyter_sh_encrypted").readlines()); open("jupyter.sh", "w").write(Encryptor2.decrypt_text(a, "nicai", valid_text_chars=Encryptor2.PRINTABLE_ASCII + "\n"))'
+#python3 -c 'import Encryptor2; a="".join(open("jupyter_sh_encrypted").readlines()); open("jupyter.sh", "w").write(Encryptor2.decrypt_text(a, "nicai", valid_text_chars=Encryptor2.PRINTABLE_ASCII + "\n"))'
 #rm jupyter_sh_encrypted
 #chmod +x jupyter.sh
 
