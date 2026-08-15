@@ -6,7 +6,7 @@
     <title>Access Denied</title>
     <style>
         :root {
-            --primary-color: #d32f2f; /* Red for denied */
+            --primary-color: #d32f2f;
             --bg-color: #f4f6f8;
             --card-bg: #ffffff;
             --text-color: #333333;
@@ -101,7 +101,7 @@
             color: var(--sub-text-color);
             margin-bottom: 30px;
             line-height: 1.6;
-            white-space: pre-wrap; /* 保留换行 */
+            white-space: pre-wrap;
         }
 
         
@@ -141,7 +141,7 @@
 
             .right-panel {
                 padding: 30px 20px;
-                align-items: center; /* 手机端居中 */
+                align-items: center;
                 text-align: center;
             }
 
@@ -216,7 +216,7 @@
             'it': 'it', 'it-it': 'it'
         };
 
-        const allowedDomainList = "example.com google.com".split();
+        const allowedDomainList = "example.com google.com trusted.site".split(" ").filter(Boolean);
 
         document.addEventListener('DOMContentLoaded', () => {
             initLanguageSelector();
@@ -264,7 +264,7 @@
                 const url = new URL(urlString, window.location.origin);
                 if (url.protocol !== 'https:') {
                     console.warn('Disallowed Protocol:', url.protocol); return false;}
-                if (!(allowedDomainList.some(i=>url.hostname.endsWith(i)))) {
+                if (!(allowedDomainList.some(i=>(url.hostname==i||url.hostname.endsWith("."+i))))) {
                     console.warn('Untrusted hostname:', url.hostname); return false;}
                 return true;
             } catch (e) {console.warn('Invalid URL:', urlString, e); return false;}
