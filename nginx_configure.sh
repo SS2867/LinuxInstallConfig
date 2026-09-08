@@ -2,27 +2,34 @@
 
 read -p "Do you want to configure nginx sites? (Enter Y)" OPTION
 if [ "$OPTION" = "Y" ]; then
-    sudo apt install certbot nginx python3-certbot-nginx -y
+    sudo apt install certbot nginx python3-certbot-nginx apache2-utils -y
     read -p "Which port does authelia listen to (if authelia is not installed, just hit ENTER): " AUTHELIA_PORT
     if ! [ -z "$AUTHELIA_PORT" ]; then
         read -p "What is the authelia auth domain (such as authelia.example.top): " AUTHELIA_HOST_DOMAIN
         read -p "What is the authelia base domain (such as example.top): " AUTHELIA_BASE_DOMAIN
         read -p "What is the authelia auth path (such as authelia, don't end with '/'): /" AUTHELIA_PATH
         AUTHELIA_PATH="/$AUTHELIA_PATH"; if ! [[ "$AUTHELIA_PATH" = */ ]]; then AUTHELIA_PATH="$AUTHELIA_PATH/"; fi
+    else
+        read -p "Setup a global nginx htpasswd basic auth file? (Enter Y)" OPTION
+        sudo touch /etc/nginx/.htpasswd
+        while [ "$OPTION" = "Y" ]; do 
+            read -p "username: " NGINX_AUTH_USERNAME
+            sudo htpasswd /etc/nginx/.htpasswd -B $NGINX_AUTH_USERNAME
+            read -p "Add another user? (Enter Y)" OPTION
+        done
+
     fi
+
 fi
 while [ "$OPTION" = "Y" ]; do
     read -p "What is the target server service domain: " NGINX_SERVICE_DOMAIN
     NGINX_SERVICE_AUTHELIA_FLAG="#"
+    NGINX_SERVICE_BASICAUTH_FLAG="#"
     if ! [ -z "$AUTHELIA_PORT" ]; then
-        read -p "Is authelia auth required for this service? (Enter Y) " OPTION
-        AUTHELIA_DOMAIN="$AUTHELIA_HOST_DOMAIN"
-        if [ "$OPTION" = "Y" ]; then
-            echo "(You will need to change corresponding access_control in authelia config)"
-            read -p "Set up an authelia reverse proxy under this domain? (Enter Y) " OPTION
-            if [ "$OPTION" = "Y" ]; then 
-                AUTHELIA_DOMAIN="$NGINX_SERVICE_DOMAIN"
-                AUTHELIA_SERVICE_NGINX_CONFIG="
+        read -p "Set up an authelia reverse proxy under this domain? (Enter Y) " OPTION
+        if [ "$OPTION" = "Y" ]; then 
+            AUTHELIA_DOMAIN="\$http_host"
+            AUTHELIA_SERVICE_NGINX_CONFIG="
     location $AUTHELIA_PATH {
         proxy_pass http://127.0.0.1:$AUTHELIA_PORT;
         proxy_set_header Host \$http_host;
@@ -37,10 +44,18 @@ while [ "$OPTION" = "Y" ]; do
         #sub_filter_types text/html;
 	    autoindex off;
     }"
-            fi
+        else AUTHELIA_DOMAIN="$AUTHELIA_HOST_DOMAIN"; fi
+
+        read -p "Is authelia auth required for this service? (Enter Y) " OPTION
+        if [ "$OPTION" = "Y" ]; then
+            echo "(You will need to change corresponding access_control in authelia config)"
             NGINX_SERVICE_AUTHELIA_FLAG=""
         fi
 
+    fi
+    if [ "$NGINX_SERVICE_AUTHELIA_FLAG" = "#" ]; then
+        read -p "Is basic auth required for this service? (Enter Y) " OPTION
+        if [ "$OPTION" = "Y" ]; then NGINX_SERVICE_BASICAUTH_FLAG=""; fi
     fi
     NGINX_SERVICE_REMOVE_CORS_CSP_CONFIG="
         # remove CORS (Cross-Origin Resource Sharing) constraint and CSP (Content Security Policy)
@@ -70,7 +85,7 @@ while [ "$OPTION" = "Y" ]; do
     fi
     NGINX_SERVICE_CERT_PATH=/
     echo "Do you want to request a certificate for service domain using letsencrypt certbot now? (Enter Y)"
-    echo "Do you want to generate a self-signed certificate for service domain? (Enter S)"
+    echo "Or do you want to generate a self-signed certificate for service domain? (Enter S)"
     read -p "The config assumes a valid cert for $NGINX_SERVICE_DOMAIN exists regardless. (Y/S/else): " OPTION
     if [ "$OPTION" = "Y" ]; then sudo certbot certonly -d $NGINX_SERVICE_DOMAIN; NGINX_SERVICE_CERT_PATH=/etc/letsencrypt/live/$NGINX_SERVICE_DOMAIN; fi
     if [ "$OPTION" = "S" ]; then 
@@ -108,6 +123,7 @@ server {
     location $NGINX_SERVICE_LOCATION {
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
         $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;  # If the verification returns a 401/403 error, redirect to the Authelia login page.
+        $NGINX_SERVICE_BASICAUTH_FLAG auth_basic "Please login"; auth_basic_user_file /etc/nginx/.htpasswd ;
 
         proxy_pass $NGINX_SERVICE_BACKEND; 
         proxy_set_header Host \$host;
@@ -141,9 +157,14 @@ iptables -A INPUT ! -i lo -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.lo
     fi
     read -p "Add another service/location for this site? (Enter Y) " OPTION
     while [ "$OPTION" = "Y" ]; do
+        NGINX_SERVICE_AUTHELIA_FLAG="#"; NGINX_SERVICE_BASICAUTH_FLAG="#";
         if ! [ -z "$AUTHELIA_PORT" ]; then
             read -p "Is authelia auth required for this service? (Enter Y) " OPTION
             if [ "$OPTION" = "Y" ]; then NGINX_SERVICE_AUTHELIA_FLAG=""; fi
+        fi
+        if [ "$NGINX_SERVICE_AUTHELIA_FLAG" = "#" ]; then
+            read -p "Is basic auth required for this service? (Enter Y) " OPTION
+            if [ "$OPTION" = "Y" ]; then NGINX_SERVICE_BASICAUTH_FLAG=""; fi
         fi
         NGINX_SERVICE_REMOVE_CORS_CSP_FLAG="#"
         NGINX_SERVICE_NO_CORS_CSP_CONTENT=""
@@ -159,6 +180,7 @@ iptables -A INPUT ! -i lo -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.lo
     location $NGINX_SERVICE_LOCATION {
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
         $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;  # If the verification returns a 401/403 error, redirect to the Authelia login page.
+        $NGINX_SERVICE_BASICAUTH_FLAG auth_basic "Please login"; auth_basic_user_file /etc/nginx/.htpasswd ;
 
         proxy_pass $NGINX_SERVICE_BACKEND; 
         proxy_set_header Host \$host;
