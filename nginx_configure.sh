@@ -14,10 +14,10 @@ if [ "$OPTION" = "Y" ]; then
         sudo touch /etc/nginx/.htpasswd
         while [ "$OPTION" = "Y" ]; do 
             read -p "username: " NGINX_AUTH_USERNAME
-            sudo htpasswd /etc/nginx/.htpasswd -B $NGINX_AUTH_USERNAME
+            sudo htpasswd -B /etc/nginx/.htpasswd $NGINX_AUTH_USERNAME
             read -p "Add another user? (Enter Y)" OPTION
         done
-
+        OPTION="Y"
     fi
 
 fi
@@ -89,7 +89,7 @@ while [ "$OPTION" = "Y" ]; do
     read -p "The config assumes a valid cert for $NGINX_SERVICE_DOMAIN exists regardless. (Y/S/else): " OPTION
     if [ "$OPTION" = "Y" ]; then sudo certbot certonly -d $NGINX_SERVICE_DOMAIN; NGINX_SERVICE_CERT_PATH=/etc/letsencrypt/live/$NGINX_SERVICE_DOMAIN; fi
     if [ "$OPTION" = "S" ]; then 
-        NGINX_SERVICE_CERT_PATH=/etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN; 
+        NGINX_SERVICE_CERT_PATH=/etc/nginx/sites-available/certs/$NGINX_SERVICE_DOMAIN; sudo mkdir -p $NGINX_SERVICE_CERT_PATH
         sudo openssl req -x509 -newkey rsa:4096 -keyout $NGINX_SERVICE_CERT_PATH/privkey.pem -out $NGINX_SERVICE_CERT_PATH/fullchain.pem -sha256 -days 365000 -nodes -subj "/CN=localhost"; fi
     read -p "What is the backend the target service listen to (such as http://localhost:9876, https://localhost:12345/): " NGINX_SERVICE_BACKEND
     read -p "What is the location matching strategy (such as \`/\` \`= /404\` \`^~ /login/\`): " NGINX_SERVICE_LOCATION
