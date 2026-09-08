@@ -1,6 +1,7 @@
 #!/bin/bash
 
-sudo apt update && sudo apt install  xfce4 xfce4-goodies fonts-wqy-zenhei konsole xserver-xephyr  x11vnc  python3-venv git -y 
+sudo apt update 
+sudo apt install  xfce4 xfce4-goodies fonts-wqy-zenhei konsole xserver-xephyr  x11vnc  python3-venv git -y 
 
 sudo x11vnc -storepasswd /etc/x11vnc.pass
 loginctl enable-linger
