@@ -5,31 +5,79 @@ if [ "$OPTION" = "Y" ]; then
     sudo apt install certbot nginx python3-certbot-nginx -y
     read -p "Which port does authelia listen to (if authelia is not installed, just hit ENTER): " AUTHELIA_PORT
     if ! [ -z "$AUTHELIA_PORT" ]; then
-        read -p "What is the authelia auth domain (such as authelia.example.top): " AUTHELIA_DOMAIN
+        read -p "What is the authelia auth domain (such as authelia.example.top): " AUTHELIA_HOST_DOMAIN
+        read -p "What is the authelia base domain (such as example.top): " AUTHELIA_BASE_DOMAIN
+        read -p "What is the authelia auth path (such as authelia, don't end with '/'): /" AUTHELIA_PATH
+        AUTHELIA_PATH="/$AUTHELIA_PATH"; if ! [[ "$AUTHELIA_PATH" = */ ]]; then AUTHELIA_PATH="$AUTHELIA_PATH/"; fi
     fi
 fi
 while [ "$OPTION" = "Y" ]; do
     read -p "What is the target server service domain: " NGINX_SERVICE_DOMAIN
-    read -p "What is the port the target service listen to: " NGINX_SERVICE_PORT
     NGINX_SERVICE_AUTHELIA_FLAG="#"
     if ! [ -z "$AUTHELIA_PORT" ]; then
         read -p "Is authelia auth required for this service? (Enter Y) " OPTION
+        AUTHELIA_DOMAIN="$AUTHELIA_HOST_DOMAIN"
         if [ "$OPTION" = "Y" ]; then
+            echo "(You will need to change corresponding access_control in authelia config)"
+            read -p "Set up an authelia reverse proxy under this domain? (Enter Y) " OPTION
+            if [ "$OPTION" = "Y" ]; then 
+                AUTHELIA_DOMAIN="$NGINX_SERVICE_DOMAIN"
+                AUTHELIA_SERVICE_NGINX_CONFIG="
+    location $AUTHELIA_PATH {
+        proxy_pass http://127.0.0.1:$AUTHELIA_PORT;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location ${AUTHELIA_PATH}403 {
+        root /etc/nginx/sites-available/AccessDenied;
+        try_files /AccessDenied.html /AccessDenied.html;
+        sub_filter 'example.com google.com trusted.site' '$AUTHELIA_BASE_DOMAIN';
+        sub_filter_once off; 
+        #sub_filter_types text/html;
+	    autoindex off;
+    }"
+            fi
             NGINX_SERVICE_AUTHELIA_FLAG=""
-            echo "(You need to change corresponding access_control in authelia config)" && sleep 1
         fi
+
     fi
+    NGINX_SERVICE_REMOVE_CORS_CSP_CONFIG="
+        # remove CORS (Cross-Origin Resource Sharing) constraint and CSP (Content Security Policy)
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+        if (\$request_method = OPTIONS) {
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+            add_header 'Access-Control-Max-Age' 1728000; # 预检缓存 20 天
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+        # Content Security Policy (CSP header)
+        proxy_hide_header Content-Security-Policy;
+        add_header Content-Security-Policy '';"
     NGINX_SERVICE_REMOVE_CORS_CSP_FLAG="#"
+    NGINX_SERVICE_NO_CORS_CSP_CONTENT=""
     echo "Do you want to forcely remove CORS (Cross-Origin Resource Sharing) constraint and "
     read -p "CSP (Content Security Policy) for this service? (Enter Y) " OPTION
     if [ "$OPTION" = "Y" ]; then
         NGINX_SERVICE_REMOVE_CORS_CSP_FLAG=""
+        NGINX_SERVICE_NO_CORS_CSP_CONTENT="$NGINX_SERVICE_REMOVE_CORS_CSP_CONFIG"
     fi
+    NGINX_SERVICE_CERT_PATH=/
     echo "Do you want to request a certificate for service domain using letsencrypt certbot now? (Enter Y)"
-    read -p "The config assumes a valid cert for $NGINX_SERVICE_DOMAIN exists regardless. (Y): " OPTION
-    if [ "$OPTION" = "Y" ]; then
-        sudo certbot certonly -d $NGINX_SERVICE_DOMAIN
-    fi
+    echo "Do you want to generate a self-signed certificate for service domain? (Enter S)"
+    read -p "The config assumes a valid cert for $NGINX_SERVICE_DOMAIN exists regardless. (Y/S/else): " OPTION
+    if [ "$OPTION" = "Y" ]; then sudo certbot certonly -d $NGINX_SERVICE_DOMAIN; NGINX_SERVICE_CERT_PATH=/etc/letsencrypt/live/$NGINX_SERVICE_DOMAIN; fi
+    if [ "$OPTION" = "S" ]; then 
+        NGINX_SERVICE_CERT_PATH=/etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN; 
+        sudo openssl req -x509 -newkey rsa:4096 -keyout $NGINX_SERVICE_CERT_PATH/privkey.pem -out $NGINX_SERVICE_CERT_PATH/fullchain.pem -sha256 -days 365000 -nodes -subj "/CN=localhost"; fi
+    read -p "What is the backend the target service listen to (such as http://localhost:9876, https://localhost:12345/): " NGINX_SERVICE_BACKEND
+    read -p "What is the location matching strategy (such as \`/\` \`= /404\` \`^~ /login/\`): " NGINX_SERVICE_LOCATION
     cat > $NGINX_SERVICE_DOMAIN << EOF
 server {
     listen 80;
@@ -41,66 +89,42 @@ server {
 server {
     listen 443 ssl;
     server_name $NGINX_SERVICE_DOMAIN;
+    http2 on;
 
-    ssl_certificate /etc/letsencrypt/live/$NGINX_SERVICE_DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$NGINX_SERVICE_DOMAIN/privkey.pem;
+    ssl_certificate $NGINX_SERVICE_CERT_PATH/fullchain.pem;
+    ssl_certificate_key $NGINX_SERVICE_CERT_PATH/privkey.pem;
 
     $NGINX_SERVICE_AUTHELIA_FLAG include /etc/nginx/snippets/authelia.conf;
 
     $NGINX_SERVICE_AUTHELIA_FLAG location @error {
     $NGINX_SERVICE_AUTHELIA_FLAG    internal;  
-    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "403") {return 302 https://$AUTHELIA_DOMAIN/403?button=Logout&rd=https://$AUTHELIA_DOMAIN/logout?rd=https://$AUTHELIA_DOMAIN/?rd=$scheme://$http_host$request_uri; }
-    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "401") {return 302 https://$AUTHELIA_DOMAIN/?rd=$scheme://$http_host$request_uri; }
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "403") {return 302 https://${AUTHELIA_DOMAIN}${AUTHELIA_PATH}403?button=Logout&rd=https://${AUTHELIA_DOMAIN}${AUTHELIA_PATH}logout?rd=https://${AUTHELIA_DOMAIN}${AUTHELIA_PATH}?rd=\$scheme://\$http_host\$request_uri; }
+    $NGINX_SERVICE_AUTHELIA_FLAG    if (\$authelia-failed = "401") {return 302 https://${AUTHELIA_DOMAIN}${AUTHELIA_PATH}/?rd=\$scheme://\$http_host\$request_uri; }
     $NGINX_SERVICE_AUTHELIA_FLAG    if (\$status = 401) {return 401;}
     $NGINX_SERVICE_AUTHELIA_FLAG    if (\$status = 403) {return 403;}
     $NGINX_SERVICE_AUTHELIA_FLAG }
+    $AUTHELIA_SERVICE_NGINX_CONFIG
 
-    location / {
-        
-        
+    location $NGINX_SERVICE_LOCATION {
         $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
-        ## If the verification returns a 401/403 error, redirect to the Authelia login page.
-        $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;
+        $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;  # If the verification returns a 401/403 error, redirect to the Authelia login page.
 
-        ## After successful auth, set the user header info and proxy to the actual backend app
-        $NGINX_SERVICE_AUTHELIA_FLAG auth_request_set \$user \$upstream_http_remote_user;
-        $NGINX_SERVICE_AUTHELIA_FLAG auth_request_set \$groups \$upstream_http_remote_groups;
-        $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-User \$user;
-        $NGINX_SERVICE_AUTHELIA_FLAG proxy_set_header Remote-Groups \$groups;
-
-        proxy_pass http://localhost:$NGINX_SERVICE_PORT; 
+        proxy_pass $NGINX_SERVICE_BACKEND; 
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr; #localhost ;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme; #https;  # 告知后端使用了 HTTPS
-        client_max_body_size 20G;
-        #proxy_set_header Origin \$scheme://\$host;    # 移除端口号
-        #proxy_cookie_path / "/; Max-Age=3600; Path=/; Secure; HttpOnly";
+        client_max_body_size 5G;
 
-        # remove CORS (Cross-Origin Resource Sharing) constraint and CSP (Content Security Policy)
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG add_header 'Access-Control-Allow-Origin' '*' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG if (\$request_method = OPTIONS) {
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Access-Control-Allow-Origin' '*' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Access-Control-Max-Age' 1728000; # 预检缓存 20 天
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Content-Type' 'text/plain; charset=utf-8' always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    add_header 'Content-Length' 0 always;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG    return 204;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG }
-        # Content Security Policy (CSP header)
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG proxy_hide_header Content-Security-Policy;
-        $NGINX_SERVICE_REMOVE_CORS_CSP_FLAG add_header Content-Security-Policy "";
+        $NGINX_SERVICE_NO_CORS_CSP_CONTENT
 
-
-        # WebSocket 支持
+        # WebSocket 
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     # static webpage
@@ -109,6 +133,60 @@ server {
     #    index index.html;
     #    try_files \$uri \$uri/ =404;
     #}
+EOF
+    read -p "Enter service port if you want to block direct port access (that bypasses nginx) via iptables in /etc/rc.local: " NGINX_SERVICE_PORT
+    if ! [ -z "$NGINX_SERVICE_PORT" ]; then 
+        sudo sed -i "/^exit 0$/i \\
+iptables -A INPUT ! -i lo -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.local
+    fi
+    read -p "Add another service/location for this site? (Enter Y) " OPTION
+    while [ "$OPTION" = "Y" ]; do
+        if ! [ -z "$AUTHELIA_PORT" ]; then
+            read -p "Is authelia auth required for this service? (Enter Y) " OPTION
+            if [ "$OPTION" = "Y" ]; then NGINX_SERVICE_AUTHELIA_FLAG=""; fi
+        fi
+        NGINX_SERVICE_REMOVE_CORS_CSP_FLAG="#"
+        NGINX_SERVICE_NO_CORS_CSP_CONTENT=""
+        echo "Do you want to forcely remove CORS (Cross-Origin Resource Sharing) constraint and "
+        read -p "CSP (Content Security Policy) for this service? (Enter Y) " OPTION
+        if [ "$OPTION" = "Y" ]; then
+            NGINX_SERVICE_REMOVE_CORS_CSP_FLAG=""
+            NGINX_SERVICE_NO_CORS_CSP_CONTENT="$NGINX_SERVICE_REMOVE_CORS_CSP_CONFIG"
+        fi
+        read -p "What is the backend the target service listen to (such as http://localhost:9876, https://localhost:12345/): " NGINX_SERVICE_BACKEND
+        read -p "What is the location matching strategy (such as \`/\` \`= /404\` \`^~ /login/\`): " NGINX_SERVICE_LOCATION
+        cat >> $NGINX_SERVICE_DOMAIN << EOF
+    location $NGINX_SERVICE_LOCATION {
+        $NGINX_SERVICE_AUTHELIA_FLAG auth_request /authelia-verify;  # Call the internal authelia authentication endpoint
+        $NGINX_SERVICE_AUTHELIA_FLAG error_page 403 401 = @error;  # If the verification returns a 401/403 error, redirect to the Authelia login page.
+
+        proxy_pass $NGINX_SERVICE_BACKEND; 
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr; #localhost ;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme; #https;  # 告知后端使用了 HTTPS
+        client_max_body_size 5G;
+
+        $NGINX_SERVICE_NO_CORS_CSP_CONTENT
+
+        # WebSocket 
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+EOF
+        read -p "Enter service port if you want to block direct port access (that bypasses nginx) via iptables in /etc/rc.local: " NGINX_SERVICE_PORT
+        if ! [ -z "$NGINX_SERVICE_PORT" ]; then 
+            sudo sed -i "/^exit 0$/i \\
+iptables -A INPUT ! -i lo -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.local
+        fi
+        read -p "Add another service/location for this site? (Enter Y) " OPTION
+    done
+    cat >> $NGINX_SERVICE_DOMAIN << EOF
+    
 }
 EOF
     sudo mv $NGINX_SERVICE_DOMAIN /etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN
@@ -116,14 +194,6 @@ EOF
     if [ "$OPTION" = "Y" ]; then
         sudo ln -s /etc/nginx/sites-available/$NGINX_SERVICE_DOMAIN /etc/nginx/sites-enabled
     fi
-    read -p "Do you want to block direct port access (that bypasses nginx) via iptables in /etc/rc.local? (Enter Y) " OPTION
-    if [ "$OPTION" = "Y" ]; then
-        sudo sed -i "/^exit 0$/i \\
-iptables -A INPUT -i lo -p tcp --dport $NGINX_SERVICE_PORT -j ACCEPT\\
-iptables -A INPUT -p tcp --dport $NGINX_SERVICE_PORT -j DROP" /etc/rc.local
-    fi
-    
-
     sudo nginx -t
     read -p "Do you want to configure another site? (Enter Y) " OPTION
 done
